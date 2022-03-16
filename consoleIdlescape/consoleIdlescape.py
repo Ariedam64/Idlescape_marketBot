@@ -1,0 +1,505 @@
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.chrome.options import Options
+from itertools import cycle
+from shutil import get_terminal_size
+from threading import Thread
+import random
+from selenium.webdriver import ActionChains
+from datetime import datetime
+from time import sleep
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from bs4 import BeautifulSoup
+import requests
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import sys
+import time
+import smtplib, ssl
+
+class Telegram:
+
+    def __init__(self, m_wd):
+            self.token = '5185720638:AAED6hnOPGi0XAbLVHI2x0VoBUcH5kMK8kY'
+            self.methodSendMessage = 'sendMessage'
+            self.methodGetMessage = 'getUpdates'
+            self.myuserid = 5202661069
+            self.lastUpdate = 0
+            self.currentUpdate = 0
+            self.messInit()
+            self.threadMess = Thread(target=self.checkCommandsBot, daemon=True)
+            self.wd = m_wd
+
+    def start(self):
+        self.threadMess.start()
+        return self
+
+    def sendMess(self, content):
+        requests.post(
+            url='https://api.telegram.org/bot{0}/{1}'.format(self.token, self.methodSendMessage),
+            data={'chat_id': self.myuserid, 'text': content}
+        ).json()
+
+    def messInit(self):
+        result = requests.get(url='https://api.telegram.org/bot{0}/{1}'.format(self.token, self.methodGetMessage)).json()
+        num_updates = len(result["result"])
+        self.lastUpdate = num_updates - 1
+        self.currentUpdate = num_updates
+
+    def getUpdate(self):
+        result = requests.get(url='https://api.telegram.org/bot{0}/{1}'.format(self.token, self.methodGetMessage)).json()
+        num_updates = len(result["result"])
+        self.lastUpdate = num_updates - 1
+
+    def getLastMess(self):
+         result = requests.get(url='https://api.telegram.org/bot{0}/{1}'.format(self.token, self.methodGetMessage)).json()
+         text = result["result"][self.lastUpdate]["message"]["text"]
+         return (text)
+
+    def incrementCurrentUpdate(self):
+        self.currentUpdate += 1
+
+    def cmdQte(self):
+        self.sendMess('Total acheté: x' + self.wd.getTotalQte())
+        self.incrementCurrentUpdate()
+
+    def cmdPrice(self):
+        self.sendMess('Total depensé: ' + self.wd.getTotalPrice() + ' gold')
+        self.incrementCurrentUpdate()
+
+    def cmdTime(self):
+        self.sendMess('Bot actif depuis: ' + self.wd.getTotalTime())
+        self.incrementCurrentUpdate()
+
+    def cmdPutOnMarket(self):
+        self.sendMess("Items mis en vente: x" + self.wd.getTotalPutOnMarket())
+        self.incrementCurrentUpdate()
+
+    def cmdItemPrice(self):
+        self.sendMess("Prix minimum de vente: " + self.wd.getItemPrice() + ' gold')
+        self.incrementCurrentUpdate()
+
+    def cmdRefreshTime(self):
+        self.sendMess("Temps refresh du market: \n" + self.wd.getRefreshTimeMin() + ' - ' + self.wd.getRefreshTimeMax())
+        self.incrementCurrentUpdate()
+
+    def cmdSoldTime(self):
+        self.sendMess("Temps de remise en vente: \n" + self.wd.getSoldTimeMin() + ' - ' + self.wd.getSoldTimeMax())
+        self.incrementCurrentUpdate()
+
+    def cmdNotifBuy(self):
+        self.wd.updateNotifBuyState()
+        self.sendMess("Notification d'achat: " + self.wd.isNotifBuy())
+        self.incrementCurrentUpdate()
+
+    def cmdNotifSold(self):
+        self.wd.updateNotifSoldState()
+        self.sendMess("Notification de vente: " + self.wd.isNotifSold())
+        self.incrementCurrentUpdate()
+
+    def cmdNotifPutOnMarket(self):
+        self.wd.updateNotifPutOnMarketState()
+        self.sendMess("Notification de remise en vente: " + self.wd.isNotifPutOnMarket())
+        self.incrementCurrentUpdate()
+
+    def cmdIsActif(self):
+        self.wd.updateIsActif()
+        self.sendMess("Etat du bot: " + self.wd.getIsActif())
+        self.incrementCurrentUpdate()
+
+    def cmdSetRefreshTime(self):
+        self.wd.limitPrice = self.getLastMess().split(' ', 1)[1]
+
+        self.sendMess("Prix minimum de vente: " + self.wd.getItemPrice() + ' gold')
+
+    def cmdSetPrice(self):
+        if (len(self.getLastMess().split(' ', 1)) != 2):
+            self.sendMess("Erreur: Veuillez saisir une valeur (ex: /setPrice 1029)")
+        else:
+            try:
+                self.wd.limitPrice = int(self.getLastMess().split(' ', 1)[1])
+                self.sendMess("M.A.J du prix minimum de vente: " + self.wd.getItemPrice() + ' gold')
+            except ValueError:
+                self.sendMess("Erreur: La valeur donner doit être un nombre entier")
+        self.incrementCurrentUpdate()
+
+    def cmdSetRefreshTime(self):
+        if (len(self.getLastMess().split(' ', 2)) != 3):
+            self.sendMess("Erreur: Veuillez saisir deux valeurs (ex: /setRefreshTime 10 20)")
+        else:
+            try:
+                self.wd.minRefreshMarketTime = int(self.getLastMess().split(' ', 2)[1])
+                self.wd.maxRefreshMarketTime = int(self.getLastMess().split(' ', 2)[2])
+                self.sendMess("M.A.J du temps de refresh du market: \n" + self.wd.getRefreshTimeMin() + ' - ' + self.wd.getRefreshTimeMax())
+            except ValueError:
+                self.sendMess("Erreur: Les valeurs donner doit être des nombres entiers")
+        self.incrementCurrentUpdate()
+
+    def cmdSetPutTime(self):
+        if (len(self.getLastMess().split(' ', 2)) != 3):
+            self.sendMess("Erreur: Veuillez saisir deux valeurs (ex: /setPutTime 20 250)")
+        else:
+            try:
+                self.wd.minRefreshSoldTime = int(self.getLastMess().split(' ', 2)[1])
+                self.wd.maxRefreshSoldTime = int(self.getLastMess().split(' ', 2)[2])
+                self.sendMess("M.A.J du temps de remise en vente: \n" + self.wd.getSoldTimeMin() + ' - ' + self.wd.getSoldTimeMax())
+            except ValueError:
+                self.sendMess("Erreur: Les valeurs donner doit être des nombres entiers")
+        self.incrementCurrentUpdate()
+
+    def cmdSetItem(self):
+        if (len(self.getLastMess().split(' ', 1)) != 2):
+            self.sendMess("Erreur: Veuillez saisir un nom d'item (ex: /setItem Mithril Ore)")
+        else:
+            self.wd.isActif = False
+            self.wd.browser.find_element(By.CLASS_NAME, 'marketplace-back-button').click()
+            self.wd.browser.implicitly_wait(2)
+            try:
+                newItem = str(self.getLastMess().split('/setItem ', 1)[1])            
+                if (self.wd.isItemImg(newItem) != ''):
+                    self.wd.setItemImg(newItem)
+                    self.wd.itemName = newItem
+                    self.wd.actions.move_to_element(self.wd.browser.find_element(By.XPATH, "//img[contains(@src, '" + self.wd.itemImg + "')]")).click().perform()
+                    self.sendMess("M.A.J de l'item mis en vente")
+            except:
+                self.wd.actions.move_to_element(self.wd.browser.find_element(By.XPATH, "//img[contains(@src, '" + self.wd.itemImg + "')]")).click().perform()
+                self.sendMess("Erreur: L'item que vous avez saisi n'existe pas")
+        self.wd.isActif = True
+        self.incrementCurrentUpdate()
+
+    def checkCommandsBot(self):       
+        while True:
+            self.getUpdate()
+            if (self.currentUpdate == self.lastUpdate):
+                if(self.getLastMess() == '/help'):
+                   self.sendMess("""
+Liste de commandes: \n
+------------------------Récupération------------------------- \n
+/info - Renvoi toutes les informations concernant le bot \n
+-------------------------Paramétrage-------------------------\n
+/setItem {item} - Définis un nouveau item 
+/setPrice {prix} - Définis un nouveau prix minimum de mise en vente
+/setRefreshTime {min} {max} - Définis le temps de rafraichissement du market en secondes
+/setPutTime {min} {max} - Définis le temps de remise en vente en secondes
+/setActif - Rend actif ou inactif le bot \n
+------------------------Notifications------------------------ \n
+/notifBuy - Active/Désactive les notifications d'achats
+/notifSold - Active/Désactive les notifications l'orsque l'item n'est plus en vente  
+/notifPutOnMarket - Active/Désactive les notifications lors de la remise en vente
+                   """)
+                   self.incrementCurrentUpdate()
+                elif(self.getLastMess() == '/info'):
+                   self.sendMess("Etat du bot: " + self.wd.getIsActif() + "\nTemps d'activité: " + self.wd.getTotalTime() + "\nItem: " + self.wd.itemName + "\nTotal récupérés: x" +  self.wd.getTotalQte() + "\nTotal dépensé: " + self.wd.getTotalPrice() + ' gold'+ "\nTotal mis en vente : x" + self.wd.getTotalPutOnMarket() + "\nPrix de vente minimal: " + self.wd.getItemPrice() + ' gold \nTemps de rafraichissement du market:\n' + self.wd.getRefreshTimeMin() + ' - ' + self.wd.getRefreshTimeMax() + "\nTemps de rafraichissement de vente:\n" + self.wd.getSoldTimeMin() + ' - ' + self.wd.getSoldTimeMax() + "\nNotification d'achat: " + self.wd.isNotifBuy() + "\nNotification de vente: " + self.wd.isNotifSold() + "\nNotification de remise en vente: " + self.wd.isNotifPutOnMarket())
+                   self.incrementCurrentUpdate()
+                elif(self.getLastMess() == '/setActif'):
+                    self.cmdIsActif()
+                elif(self.getLastMess() == '/notifBuy'):
+                    self.cmdNotifBuy()
+                elif(self.getLastMess() == '/notifSold'):
+                    self.cmdNotifSold()
+                elif(self.getLastMess() == '/notifPutOnMarket'):
+                    self.cmdNotifPutOnMarket()
+                elif(self.getLastMess().split(' ', 1)[0] == '/setPrice'):
+                    self.cmdSetPrice()
+                elif(self.getLastMess().split(' ', 1)[0] == '/setRefreshTime'):
+                    self.cmdSetRefreshTime()
+                elif(self.getLastMess().split(' ', 1)[0] == '/setPutTime'):
+                    self.cmdSetPutTime()
+                elif(self.getLastMess().split(' ', 1)[0] == '/setItem'):
+                    self.cmdSetItem()
+                else:
+                    self.incrementCurrentUpdate()
+                
+        pass
+
+class Loader:
+    def __init__(self, desc="Loading...", end="Done!", timeout=0.1):
+
+        self.desc = desc
+        self.end = end
+        self.timeout = timeout
+
+        self._thread = Thread(target=self._animate, daemon=True)
+        self.steps = ["⢿", "⣻", "⣽", "⣾", "⣷", "⣯", "⣟", "⡿"]
+        self.done = False
+
+    def start(self):
+        self._thread.start()
+        return self
+
+    def _animate(self):
+        for c in cycle(self.steps):
+            if self.done:
+                break
+            print(f"\r{self.desc} {c}", flush=True, end="")
+            sleep(self.timeout)
+
+    def __enter__(self):
+        self.start()
+
+    def stop(self):
+        self.done = True
+        cols = get_terminal_size((80, 20)).columns
+        print("\r" + " " * cols, end="", flush=True)
+        print(f"\r{self.end}", flush=True)
+
+    def __exit__(self, exc_type, exc_value, tb):
+        self.stop()
+
+        pass
+
+class WebDriver:
+    def __init__(self, m_limitPrice, m_time):
+        self.limitPrice = m_limitPrice
+        self.time = m_time
+        self.itemName = "Mithril Ore"
+        self.itemImg = ''
+        self.lastItem = ""
+        self.foundList = {''}
+        self.PATH = Service('C:\Program Files (x86)\chromedriver.exe')
+        self.urlJeu = 'https://idlescape.com/game'
+        self.browser = None
+        self.found = True
+        self.notifBuy = True
+        self.notifSold = False
+        self.notifPutOnMarket = False
+        self.isActif = True
+        self.nbPassage = 1
+        self.totalQte = 0
+        self.totalPrice = 0
+        self.totalTime = 0
+        self.totalPutOnMarket = 0
+        self.minRefreshMarketTime = 10
+        self.maxRefreshMarketTime = 30
+        self.minRefreshSoldTime = 40
+        self.maxRefreshSoldTime = 300
+        self.actions = 0
+        self.telBot = Telegram(self)
+        self.startDate = datetime.now()
+        self.options = webdriver.ChromeOptions()
+
+    def wdOptionsInjection(self):
+        self.options.add_experimental_option('excludeSwitches', ['enable-logging'])
+        self.options.add_argument("user-data-dir=C:\\Users\\rmadeira\\AppData\\Local\\Google\\Chrome\\nv")
+        #options.add_argument("--headless")
+ 
+    def start(self):
+        try:
+            wd0 = Loader("Initialisation du bot Telegram ", "Initialisation du bot Telegram : OK").start()
+            self.telBot.start()
+            wd0.stop()
+
+            wd1 = Loader("Initialisation des options du webDriver ", "Initialisation des options du webDriver : OK").start()
+            self.wdOptionsInjection()
+            wd1.stop()
+
+            wd2 = Loader("Implémentation des options dans le webDriver ", "Implémentations des options du webDriver : OK").start()
+            self.browser = webdriver.Chrome(service=self.PATH, options=self.options)
+            self.actions = ActionChains(self.browser)
+            wd2.stop()
+
+            wd3 = Loader("Connection à Idlescape ", "Connection à Idlescape : OK").start()
+            self.browser.get(self.urlJeu) #On se connecte au site
+            wd3.stop()
+            
+        except:
+            print('Impossible de lancer le webDriver')
+
+    def connectToMarket(self):
+        try:
+             wd4 = Loader("Accès au market en cours ", "Accès au market : OK").start()
+             self.browser.find_element(By.CLASS_NAME, 'character-select-container').click()
+             self.browser.implicitly_wait(4)
+             self.browser.find_element(By.CLASS_NAME, 'close-dialog-button').click()       
+             self.browser.implicitly_wait(2)
+             self.browser.find_element(By.CLASS_NAME, 'navbar1-box').click()
+             self.browser.implicitly_wait(2)
+             self.browser.find_element(By.XPATH, '//*[text()="Marketplace"]').click()  
+             self.browser.implicitly_wait(2)
+             self.setItemImg(self.itemName)
+             self.actions.move_to_element(self.browser.find_element(By.XPATH, "//img[contains(@src, '" + self.itemImg + "')]")).click().perform()
+             
+        except:
+            print("Impossible d'acceder au market")
+
+        
+        
+        wd4.stop()
+
+    def checkMarket(self):
+
+        wd5 = Loader("Vérification des valeurs en cours ").start()
+        while True:
+
+            if self.isActif == True:
+
+                self.browser.implicitly_wait(1)
+                self.browser.find_element(By.XPATH, '//*[@id="marketplace-refresh-button"]').click()
+                time.sleep(3)
+
+                htmlMarket = self.browser.page_source #Récupère le code HTML du site chargé
+                soupMarket = BeautifulSoup(htmlMarket, 'html.parser') #On définie notre hasher
+                soupMarket.find_all("table", {"class": "crafting-table marketplace-table"})
+
+                item = soupMarket.find_all('tr')[1]
+                quantite = item.find_all('td')[2].text
+                prix = item.find_all('td')[3].text
+                prix = prix.replace(" ", "")
+                quantite = quantite.replace(" ", "")
+                self.lastItem = item.find_all('td')[0].text + '| x' + quantite + ', ' + prix
+            
+                prix = int(prix)
+                if prix < self.limitPrice and self.lastItem not in self.foundList:
+                    self.foundList.add(self.lastItem)             
+                    self.buyMaxItem()
+                    self.totalPrice += int(prix) * int(quantite)
+                    self.totalQte += int(quantite)
+                    if self.notifBuy:
+                        self.telBot.sendMess(datetime.now().strftime("%H:%M:%S") + ': Achat de ' + str(self.lastItem))
+                elif prix > self.limitPrice:
+                    if self.notifSold:
+                        self.telBot.sendMess(datetime.now().strftime("%H:%M:%S") + ': Votre ' + self.itemName + ' a été vendu')
+                    self.foundList = {''}
+                    self.found = False
+                    time.sleep(random.randint(self.minRefreshSoldTime, self.maxRefreshSoldTime))
+                    self.sellNewItem()
+                    if self.notifPutOnMarket:
+                        self.telBot.sendMess(datetime.now().strftime("%H:%M:%S") + ': Mise en vente x1 ' + self.itemName + ' a ' + str(self.limitPrice))
+                    self.totalPutOnMarket += 1
+                time.sleep(random.randint(self.minRefreshMarketTime, self.maxRefreshMarketTime))
+                self.nbPassage += 1
+
+        wd5.stop()
+
+    def getLastItem(self):
+        return str(self.lastItem)
+
+    def isFound(self):
+        return str(self.found)
+
+    def getTotalQte(self):
+        return str("{:,}".format(self.totalQte))
+
+    def getTotalPrice(self):
+        return str("{:,}".format(self.totalPrice))
+
+    def getItemPrice(self):
+        return str("{:,}".format(self.limitPrice))
+
+    def setItemImg(self, item):
+        self.itemImg = self.browser.find_element(By.XPATH, "//img[contains(@alt, '" + item + "')]").get_attribute("src").replace("https://idlescape.com", "")
+
+    def isItemImg(self, item):
+        return self.browser.find_element(By.XPATH, "//img[contains(@alt, '" + item + "')]").get_attribute("src").replace("https://idlescape.com", "")
+
+    def isNotifBuy(self):
+        if(self.notifBuy):
+            return 'Activé'
+        return 'Désactivé'
+
+    def updateNotifBuyState(self):
+        self.notifBuy = not self.notifBuy
+
+    def isNotifSold(self):
+        if(self.notifSold):
+            return 'Activé'
+        return 'Désactivé'
+
+    def updateNotifSoldState(self):
+        self.notifSold = not self.notifSold
+
+    def isNotifPutOnMarket(self):
+        if(self.notifPutOnMarket):
+            return 'Activé'
+        return 'Désactivé'
+
+    def updateNotifPutOnMarketState(self):
+        self.notifPutOnMarket = not self.notifPutOnMarket
+
+    def getIsActif(self):
+        if(self.isActif):
+            return 'Actif'
+        return 'Inactif' 
+
+    def updateIsActif(self):
+        self.isActif = not self.isActif
+
+    def getRefreshTimeMin(self):
+        sec = self.minRefreshMarketTime % (24 * 3600)
+        sec %= 3600
+        min = sec // 60
+        sec %= 60
+        return "%02d:%02ds" % (min, sec)
+
+    def getRefreshTimeMax(self):
+        sec = self.maxRefreshMarketTime % (24 * 3600)
+        sec %= 3600
+        min = sec // 60
+        sec %= 60
+        return "%02d:%02ds" % (min, sec)
+
+    def getSoldTimeMin(self):
+        sec = self.minRefreshSoldTime % (24 * 3600)
+        sec %= 3600
+        min = sec // 60
+        sec %= 60
+        return "%02d:%02ds" % (min, sec)
+
+    def getSoldTimeMax(self):
+        sec = self.maxRefreshSoldTime % (24 * 3600)
+        sec %= 3600
+        min = sec // 60
+        sec %= 60
+        return "%02d:%02ds" % (min, sec)
+
+    def getTotalTime(self):
+        totalTime = str(datetime.now() - self.startDate)
+        totalTime = totalTime.split('.', 1)[0]
+        totalTime = totalTime + 's'
+        return str(totalTime)
+
+    def getTotalPutOnMarket(self):
+        return str(self.totalPutOnMarket) + ' ' + self.itemName
+
+    def buyMaxItem(self):
+        self.browser.implicitly_wait(1)
+        self.browser.find_element(By.XPATH, '//*[@id="root"]/div/div/div[4]/div[2]/div[2]/div[1]/div[2]/div/table/tbody/tr[1]').click()
+        self.browser.implicitly_wait(2)
+        self.browser.find_element(By.XPATH, '//*[text()="Buy Max"]').click()
+        self.browser.implicitly_wait(2)
+        self.browser.find_element(By.XPATH, '//*[text()="Buy"]').click()     
+
+    def sellNewItem(self):
+        self.browser.implicitly_wait(2)
+        self.browser.find_element(By.CLASS_NAME, 'marketplace-back-button').click()
+        self.browser.implicitly_wait(2)
+        self.browser.find_element(By.XPATH, '//*[text()="Sell"]').click()
+        self.browser.implicitly_wait(2)
+        try:
+            self.actions.move_to_element(self.browser.find_element(By.XPATH, "//img[contains(@src, '" + self.itemImg + "')]")).click().perform()
+            self.browser.implicitly_wait(2)
+            self.browser.find_element(By.XPATH, '/html/body/div[3]/div[3]/div/div[2]/input').send_keys(self.limitPrice)
+            self.browser.implicitly_wait(2)
+            self.browser.find_element(By.XPATH, '//*[text()="Sell"]').click()
+            self.browser.implicitly_wait(2)
+        except:
+            self.telBot.sendMess("Vous n'avez plus de " + self.itemName + "\nPassage du bot dans l'état inactif")
+            self.isActif = False
+        self.browser.find_element(By.XPATH, '//*[text()="Buy"]').click()
+        self.browser.implicitly_wait(2)
+        self.actions.move_to_element(self.browser.find_element(By.XPATH, "//img[contains(@src, '" + self.itemImg + "')]")).click().perform()
+
+        pass
+
+
+print('-----------------------------------------------------DEBUT DU PROGRAMME'+ "\n"+ "\n"+ "\n")
+
+wd = WebDriver(1127, random.randint(10, 30))
+wd.start()
+wd.connectToMarket()
+wd.checkMarket()
+print('-------------------------------------------------------FIN DU PROGRAMME')
+
+
+
