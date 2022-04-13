@@ -12,11 +12,8 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from bs4 import BeautifulSoup
 import requests
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 import sys
 import time
-import smtplib, ssl
 
 class Telegram:
 
@@ -257,7 +254,7 @@ class WebDriver:
         self.itemImg = ''
         self.lastItem = ""
         self.foundList = {''}
-        self.PATH = Service('C:\Program Files (x86)\chromedriver.exe')
+        self.PATH = Service('C:\chromedriver.exe')
         self.urlJeu = 'https://idlescape.com/game'
         self.browser = None
         self.found = True
@@ -281,7 +278,7 @@ class WebDriver:
 
     def wdOptionsInjection(self):
         self.options.add_experimental_option('excludeSwitches', ['enable-logging'])
-        self.options.add_argument("user-data-dir=C:\\Users\\rmadeira\\AppData\\Local\\Google\\Chrome\\nv")
+        self.options.add_argument("user-data-dir=C:\\Users\\Romann\\AppData\\Local\\Google\\Chrome\\nv")
         #options.add_argument("--headless")
  
     def start(self):
@@ -334,7 +331,7 @@ class WebDriver:
 
             if self.isActif == True:
 
-                self.browser.implicitly_wait(1)
+                self.browser.implicitly_wait(2)
                 self.browser.find_element(By.XPATH, '//*[@id="marketplace-refresh-button"]').click()
                 time.sleep(3)
 
@@ -497,8 +494,8 @@ print('-----------------------------------------------------DEBUT DU PROGRAMME'+
 
 wd = WebDriver(1127, random.randint(10, 30))
 wd.start()
-wd.connectToMarket()
-wd.checkMarket()
+#wd.connectToMarket()
+#wd.checkMarket()
 print('-------------------------------------------------------FIN DU PROGRAMME')
 
 
