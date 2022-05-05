@@ -1,3 +1,4 @@
+from typing import List
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.chrome.options import Options
@@ -15,10 +16,12 @@ import requests
 import sys
 import time
 
+from selenium.webdriver.remote.webelement import WebElement
+
 class Telegram:
 
     def __init__(self, m_wd):
-            self.token = '5185720638:AAED6hnOPGi0XAbLVHI2x0VoBUcH5kMK8kY'
+            self.token = '5328440960:AAH-OtrbLtk7eOf0fjLhSb5Gjex3lE-Rbps'
             self.methodSendMessage = 'sendMessage'
             self.methodGetMessage = 'getUpdates'
             self.myuserid = 5202661069
@@ -105,6 +108,11 @@ class Telegram:
         self.sendMess("Etat du bot: " + self.wd.getIsActif())
         self.incrementCurrentUpdate()
 
+    def cmdCheckingChat(self):
+        self.wd.updateCheckingChatState()
+        self.sendMess("Vérification du chat: " + self.wd.isCheckingChat())
+        self.incrementCurrentUpdate()
+
     def cmdSetRefreshTime(self):
         self.wd.limitPrice = self.getLastMess().split(' ', 1)[1]
 
@@ -167,6 +175,7 @@ class Telegram:
 
     def checkCommandsBot(self):       
         while True:
+            time.sleep(2)
             self.getUpdate()
             if (self.currentUpdate == self.lastUpdate):
                 if(self.getLastMess() == '/help'):
@@ -179,7 +188,8 @@ Liste de commandes: \n
 /setPrice {prix} - Définis un nouveau prix minimum de mise en vente
 /setRefreshTime {min} {max} - Définis le temps de rafraichissement du market en secondes
 /setPutTime {min} {max} - Définis le temps de remise en vente en secondes
-/setActif - Rend actif ou inactif le bot \n
+/setActif - Rend actif ou inactif le bot
+/setCheckingChat - Rend actif ou inactif la vérification du chat \n
 ------------------------Notifications------------------------ \n
 /notifBuy - Active/Désactive les notifications d'achats
 /notifSold - Active/Désactive les notifications l'orsque l'item n'est plus en vente  
@@ -187,8 +197,10 @@ Liste de commandes: \n
                    """)
                    self.incrementCurrentUpdate()
                 elif(self.getLastMess() == '/info'):
-                   self.sendMess("Etat du bot: " + self.wd.getIsActif() + "\nTemps d'activité: " + self.wd.getTotalTime() + "\nItem: " + self.wd.itemName + "\nTotal récupérés: x" +  self.wd.getTotalQte() + "\nTotal dépensé: " + self.wd.getTotalPrice() + ' gold'+ "\nTotal mis en vente : x" + self.wd.getTotalPutOnMarket() + "\nPrix de vente minimal: " + self.wd.getItemPrice() + ' gold \nTemps de rafraichissement du market:\n' + self.wd.getRefreshTimeMin() + ' - ' + self.wd.getRefreshTimeMax() + "\nTemps de rafraichissement de vente:\n" + self.wd.getSoldTimeMin() + ' - ' + self.wd.getSoldTimeMax() + "\nNotification d'achat: " + self.wd.isNotifBuy() + "\nNotification de vente: " + self.wd.isNotifSold() + "\nNotification de remise en vente: " + self.wd.isNotifPutOnMarket())
+                   self.sendMess("Etat du bot: " + self.wd.getIsActif() + "\nVérification du chat: " + self.wd.isCheckingChat() + "\nTemps d'activité: " + self.wd.getTotalTime() + "\nItem: " + self.wd.itemName + "\nTotal récupérés: x" +  self.wd.getTotalQte() + "\nTotal dépensé: " + self.wd.getTotalPrice() + ' gold'+ "\nTotal mis en vente : x" + self.wd.getTotalPutOnMarket() + "\nPrix de vente minimal: " + self.wd.getItemPrice() + ' gold \nTemps de rafraichissement du market:\n' + self.wd.getRefreshTimeMin() + ' - ' + self.wd.getRefreshTimeMax() + "\nTemps de rafraichissement de vente:\n" + self.wd.getSoldTimeMin() + ' - ' + self.wd.getSoldTimeMax() + "\nNotification d'achat: " + self.wd.isNotifBuy() + "\nNotification de vente: " + self.wd.isNotifSold() + "\nNotification de remise en vente: " + self.wd.isNotifPutOnMarket())
                    self.incrementCurrentUpdate()
+                elif(self.getLastMess() == '/setCheckingChat'):
+                    self.cmdCheckingChat()
                 elif(self.getLastMess() == '/setActif'):
                     self.cmdIsActif()
                 elif(self.getLastMess() == '/notifBuy'):
@@ -250,10 +262,14 @@ class WebDriver:
     def __init__(self, m_limitPrice, m_time):
         self.limitPrice = m_limitPrice
         self.time = m_time
+        self.isCheckChat = True
+        self.listFoundMessage = set()
+        self.sellTime = datetime.now().strftime("%H:%M:%S")
         self.itemName = "Mithril Ore"
         self.itemImg = ''
         self.lastItem = ""
         self.foundList = {''}
+        self.listMessage = set()
         self.PATH = Service('C:\chromedriver.exe')
         self.urlJeu = 'https://idlescape.com/game'
         self.browser = None
@@ -262,13 +278,14 @@ class WebDriver:
         self.notifSold = False
         self.notifPutOnMarket = False
         self.isActif = True
+        self.randomPrice = 0
         self.nbPassage = 1
         self.totalQte = 0
         self.totalPrice = 0
         self.totalTime = 0
         self.totalPutOnMarket = 0
-        self.minRefreshMarketTime = 10
-        self.maxRefreshMarketTime = 30
+        self.minRefreshMarketTime = 30
+        self.maxRefreshMarketTime = 500
         self.minRefreshSoldTime = 40
         self.maxRefreshSoldTime = 300
         self.actions = 0
@@ -279,7 +296,7 @@ class WebDriver:
     def wdOptionsInjection(self):
         self.options.add_experimental_option('excludeSwitches', ['enable-logging'])
         self.options.add_argument("user-data-dir=C:\\Users\\Romann\\AppData\\Local\\Google\\Chrome\\nv")
-        #options.add_argument("--headless")
+        #self.options.add_argument("--headless")
  
     def start(self):
         try:
@@ -315,25 +332,52 @@ class WebDriver:
              self.browser.find_element(By.XPATH, '//*[text()="Marketplace"]').click()  
              self.browser.implicitly_wait(2)
              self.setItemImg(self.itemName)
+             threadCheckChat = Thread(target=self.checkChat, daemon=True)
+             threadCheckChat.start()
              self.actions.move_to_element(self.browser.find_element(By.XPATH, "//img[contains(@src, '" + self.itemImg + "')]")).click().perform()
-             
+   
         except:
             print("Impossible d'acceder au market")
-
-        
         
         wd4.stop()
+
+    def checkChat(self):
+
+        while True:
+           if self.isCheckChat == True and self.isActif:
+               htmlMarket2 = self.browser.page_source #Récupère le code HTML du site chargé
+               soupMarket2 = BeautifulSoup(htmlMarket2, 'html.parser') #On définie notre hasher
+               for chatMessage in soupMarket2.find_all('div',{"class": "chat-message"}):           
+                
+                        if len(chatMessage.find_all("span")) > 2:
+                            message = str(chatMessage.find_all("span")[3].text)
+                            heure = str(chatMessage.find_all("span")[0].text)
+                            pseudo = str(chatMessage.find_all("span")[1].text)
+                    
+                        if (message.find('style="position: absolute; top: 0px; left: 0px; width: 100%; height: 100%;">')) == -1:
+                            messToSend = heure + pseudo + ": " + message
+                            self.listMessage.add(messToSend)
+
+               time.sleep(5)
+               if len(self.listMessage) > 0:
+                    for mess in self.listMessage:
+                        message = mess.lower()
+                        if message.find(" mith ".lower()) != -1 or message.find("mithril".lower()) != -1 or message.find("market manipulation".lower()) != -1:
+                            if (mess not in self.listFoundMessage):
+                                self.listFoundMessage.add(mess)
+                                self.telBot.sendMess("Désactivation automatique du bot suite au message suivant: \n" + mess)
+                                self.updateIsActif()
 
     def checkMarket(self):
 
         wd5 = Loader("Vérification des valeurs en cours ").start()
+        self.telBot.sendMess('Vérification des valeurs en cours')
         while True:
 
             if self.isActif == True:
-
                 self.browser.implicitly_wait(2)
                 self.browser.find_element(By.XPATH, '//*[@id="marketplace-refresh-button"]').click()
-                time.sleep(3)
+                time.sleep(3) 
 
                 htmlMarket = self.browser.page_source #Récupère le code HTML du site chargé
                 soupMarket = BeautifulSoup(htmlMarket, 'html.parser') #On définie notre hasher
@@ -347,14 +391,14 @@ class WebDriver:
                 self.lastItem = item.find_all('td')[0].text + '| x' + quantite + ', ' + prix
             
                 prix = int(prix)
-                if prix < self.limitPrice and self.lastItem not in self.foundList:
+                if prix < self.randomPrice and self.lastItem not in self.foundList:
                     self.foundList.add(self.lastItem)             
                     self.buyMaxItem()
                     self.totalPrice += int(prix) * int(quantite)
                     self.totalQte += int(quantite)
                     if self.notifBuy:
                         self.telBot.sendMess(datetime.now().strftime("%H:%M:%S") + ': Achat de ' + str(self.lastItem))
-                elif prix > self.limitPrice:
+                elif prix > self.randomPrice:
                     if self.notifSold:
                         self.telBot.sendMess(datetime.now().strftime("%H:%M:%S") + ': Votre ' + self.itemName + ' a été vendu')
                     self.foundList = {''}
@@ -364,7 +408,7 @@ class WebDriver:
                     if self.notifPutOnMarket:
                         self.telBot.sendMess(datetime.now().strftime("%H:%M:%S") + ': Mise en vente x1 ' + self.itemName + ' a ' + str(self.limitPrice))
                     self.totalPutOnMarket += 1
-                time.sleep(random.randint(self.minRefreshMarketTime, self.maxRefreshMarketTime))
+                time.sleep(random.randint(self.minRefreshMarketTime, self.maxRefreshMarketTime))         
                 self.nbPassage += 1
 
         wd5.stop()
@@ -397,6 +441,14 @@ class WebDriver:
 
     def updateNotifBuyState(self):
         self.notifBuy = not self.notifBuy
+
+    def isCheckingChat(self):
+        if(self.isCheckChat):
+            return 'Activé'
+        return 'Désactivé'
+
+    def updateCheckingChatState(self):
+        self.isCheckChat = not self.isCheckChat
 
     def isNotifSold(self):
         if(self.notifSold):
@@ -460,42 +512,52 @@ class WebDriver:
         return str(self.totalPutOnMarket) + ' ' + self.itemName
 
     def buyMaxItem(self):
-        self.browser.implicitly_wait(1)
-        self.browser.find_element(By.XPATH, '//*[@id="root"]/div/div/div[4]/div[2]/div[2]/div[1]/div[2]/div/table/tbody/tr[1]').click()
-        self.browser.implicitly_wait(2)
-        self.browser.find_element(By.XPATH, '//*[text()="Buy Max"]').click()
-        self.browser.implicitly_wait(2)
-        self.browser.find_element(By.XPATH, '//*[text()="Buy"]').click()     
+        try:
+            self.browser.implicitly_wait(1)
+            self.browser.find_element(By.XPATH, '//*[@id="root"]/div/div/div[4]/div[2]/div[2]/div[1]/div[2]/div/table/tbody/tr[1]').click()
+            self.browser.implicitly_wait(2)
+            self.browser.find_element(By.XPATH, '//*[text()="Buy Max"]').click()
+            self.browser.implicitly_wait(2)
+            self.browser.find_element(By.XPATH, '//*[text()="Buy"]').click()
+        except:
+            self.telBot.sendMess("Erreur lors de l'achat du mithril \nPassage du bot dans l'état inactif")
+            self.isActif = False
 
     def sellNewItem(self):
-        self.browser.implicitly_wait(2)
-        self.browser.find_element(By.CLASS_NAME, 'marketplace-back-button').click()
-        self.browser.implicitly_wait(2)
-        self.browser.find_element(By.XPATH, '//*[text()="Sell"]').click()
-        self.browser.implicitly_wait(2)
         try:
-            self.actions.move_to_element(self.browser.find_element(By.XPATH, "//img[contains(@src, '" + self.itemImg + "')]")).click().perform()
             self.browser.implicitly_wait(2)
-            self.browser.find_element(By.XPATH, '/html/body/div[3]/div[3]/div/div[2]/input').send_keys(self.limitPrice)
+            self.browser.find_element(By.CLASS_NAME, 'marketplace-back-button').click()
             self.browser.implicitly_wait(2)
             self.browser.find_element(By.XPATH, '//*[text()="Sell"]').click()
             self.browser.implicitly_wait(2)
+            try:
+                self.actions.move_to_element(self.browser.find_element(By.XPATH, "//img[contains(@src, '" + self.itemImg + "')]")).click().perform()
+                self.browser.implicitly_wait(2)
+                self.randomPrice = random.randint(self.limitPrice-5, self.limitPrice+5)
+                self.browser.find_element(By.XPATH, '/html/body/div[3]/div[3]/div/div[2]/input').send_keys(self.randomPrice)
+                self.browser.implicitly_wait(2)
+                self.browser.find_element(By.XPATH, '//*[text()="Sell"]').click()
+                self.browser.implicitly_wait(2)
+            except:
+                self.telBot.sendMess("Vous n'avez plus de " + self.itemName + "\nPassage du bot dans l'état inactif")
+                self.isActif = False
+            self.browser.find_element(By.XPATH, '//*[text()="Buy"]').click()
+            self.browser.implicitly_wait(2)
+            self.actions.move_to_element(self.browser.find_element(By.XPATH, "//img[contains(@src, '" + self.itemImg + "')]")).click().perform()
         except:
-            self.telBot.sendMess("Vous n'avez plus de " + self.itemName + "\nPassage du bot dans l'état inactif")
+            self.telBot.sendMess("Erreur lors de la vente du mithril \nPassage du bot dans l'état inactif")
             self.isActif = False
-        self.browser.find_element(By.XPATH, '//*[text()="Buy"]').click()
-        self.browser.implicitly_wait(2)
-        self.actions.move_to_element(self.browser.find_element(By.XPATH, "//img[contains(@src, '" + self.itemImg + "')]")).click().perform()
 
         pass
 
 
 print('-----------------------------------------------------DEBUT DU PROGRAMME'+ "\n"+ "\n"+ "\n")
 
-wd = WebDriver(1127, random.randint(10, 30))
+wd = WebDriver(1712, random.randint(35, 254))
 wd.start()
-#wd.connectToMarket()
-#wd.checkMarket()
+wd.connectToMarket()
+wd.checkMarket()
+
 print('-------------------------------------------------------FIN DU PROGRAMME')
 
 
